@@ -1,92 +1,81 @@
 import undetected_chromedriver as uc
-from selenium.webdriver.common.by import By
 import time
 import random
-import csv
-
+import os
+from selenium.webdriver import ActionChains
+from selenium.webdriver.common.by import By
 
 class AvitoParse:
-    def __init__(self, url: str, items: list, count_page=5, version_main=None):
+    def __init__(self, url: str, count_page=5, version_main=None):
         self.url = url
-        self.items = items
         self.count_page = count_page
         self.version_main = version_main
         self.driver = None
+        self.page_number = 1
 
     def __setUp(self):
         self.driver = uc.Chrome(version_main=self.version_main)
 
     def __getUrl(self):
         self.driver.get(self.url)
+        self.__simulateHumanScrolling()
+        self.__simulateMouseMovement()
+
+    def __simulateHumanScrolling(self):
+        scroll_down = "window.scrollTo(0, document.body.scrollHeight/3);"
+        scroll_up = "window.scrollTo(0, -document.body.scrollHeight/4);"
+        self.driver.execute_script(scroll_down)
+        time.sleep(random.uniform(1, 2))
+        self.driver.execute_script(scroll_up)
+        time.sleep(random.uniform(1, 2))
+
+    def __simulateMouseMovement(self):
+        # Перемещение мыши на случайное смещение в пределах видимой части окна
+        action = ActionChains(self.driver)
+        move_x = random.randint(100, 500)  # Случайное смещение по горизонтали
+        move_y = random.randint(100, 500)  # Случайное смещение по вертикали
+        action.move_by_offset(move_x, move_y).perform()
+        time.sleep(random.uniform(0.5, 1.5))  # Пауза после перемещения
 
     def __pg(self):
         while self.driver.find_element(By.CSS_SELECTOR,
                                        "[data-marker='pagination-button/nextPage']") and self.count_page > 0:
+            self.__simulateHumanScrolling()
+            self.__simulateMouseMovement()
             self.__parsePage()
+            time.sleep(random.uniform(15, 20))  # Pause before clicking next
             self.driver.find_element(By.CSS_SELECTOR, "[data-marker*='pagination-button/next']").click()
+
             self.count_page -= 1
 
-    def __saveToCSV(self, data):
-        with open('avito_data.csv', 'a', newline='', encoding='utf-8') as csvfile:
-            fieldnames = ['Name', 'Price', 'Description', 'Address', 'Seller', 'URL']
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-            if csvfile.tell() == 0:
-                writer.writeheader()
-            writer.writerow(data)  # Просто записываем данные без проверки на дубликаты
+    def __saveToHTML(self, html, filepath):
+        with open(filepath, 'w', encoding='utf-8') as html_file:
+            html_file.write(html)
+            print(f"HTML-код страницы успешно сохранен в файл {filepath}")
+
+    def __createFolder(self, folder):
+        if not os.path.exists(folder):
+            os.makedirs(folder)
 
     def __parsePage(self):
-        items = self.driver.find_elements(By.CSS_SELECTOR, "[data-marker='item']")
-        for i, data in enumerate(items):
-            url = data.find_element(By.CSS_SELECTOR, "[data-marker='item-title']").get_attribute("href")
-            name = data.find_element(By.CSS_SELECTOR, "[itemprop='name']").text
-            price = data.find_element(By.CSS_SELECTOR, "[data-marker='item-price']").text
-            # Проверяем наличие элемента с описанием
-            try:
-                description = data.find_element(By.CSS_SELECTOR, "[class*='item-description']").text
-            except:
-                description = "Нет описания"
-            # Проверяем наличие элемента с адресом
-            try:
-                address = data.find_element(By.CSS_SELECTOR, "[data-marker='item-address']").text
-            except:
-                address = "Адрес не указан"
-            # Проверяем наличие элемента с продавцом
-            try:
-                seller = data.find_element(By.CSS_SELECTOR, "[data-marker='seller-info/label']").text
-            except:
-                seller = "Нет информации о продавце"
-            # Создаем словарь с данными для записи в CSV файл
-            csv_data = {
-                'Name': name,
-                'Price': price,
-                'Description': description,
-                'Address': address,
-                'Seller': seller,
-                'URL': url
-            }
-            # Записываем данные в CSV файл
-            self.__saveToCSV(csv_data)
-            # Выводим данные в консоль
-            print(name, price, description, address, seller, url)
-            if (i + 1) % 5 == 0 and i != 0:
-                print("Парсинг приостановлен. Подождите 10 секунд...")
-                time.sleep(10)  # Задержка 10 секунд после каждых 5 объявлений
-            else:
-                print("Подождите 4 секунды перед парсингом следующего объявления...")
-                time.sleep(random.uniform(3, 5))  # Рандомная задержка от 3 до 5 секунд
+        html = self.driver.page_source
+        folder_name = time.strftime("%Y%m%d")
+        folder_path = os.path.join("source", folder_name)
+        self.__createFolder(folder_path)
+        filename = f"{time.strftime('%H%M%S')}_{self.page_number}.html"
+        filepath = os.path.join(folder_path, filename)
+        self.__saveToHTML(html, filepath)
+        self.page_number += 1
 
     def parse(self):
         self.__setUp()
         self.__getUrl()
         self.__pg()
 
-
 if __name__ == "__main__":
     avito_parser = AvitoParse(
-        url='https://www.avito.ru/voronezh/kvartiry/prodam-ASgBAgICAUSSA8YQ?context=H4sIAAAAAAAA_0q0MrSqLraysFJKK8rPDUhMT1WyLrYyNLNSKk5NLErOcMsvyg3PTElPLVGyrgUEAAD__xf8iH4tAAAA',
-        count_page=1,
+        url='https://www.avito.ru/voronezh/kvartiry/prodam-ASgBAgICAUSSA8YQ?context=H4sIAAAAAAAA_0q0MrSqLrYyNLNSKk5NLErOcMsvyg3PTElPLVGyrgUEAAD__xf8iH4tAAAA',
+        count_page=2,
         version_main=114,
-        items=["1-к. квартира"]
     )
-
     avito_parser.parse()
